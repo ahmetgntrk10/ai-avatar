@@ -1,4 +1,8 @@
 import express from "express";
+import { spawn } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 let secilenModel = null;
 let secimZamani = 0;
@@ -23,6 +27,46 @@ async function chatModeli() {
   return secilenModel;
 }
 
+const PIPER_DIR = process.env.PIPER_DIR || "/opt/piper";
+const SESLER = {
+  tr: process.env.PIPER_TR || "/opt/piper/voices/tr_TR-dfki-medium.onnx",
+  en: process.env.PIPER_EN || "/opt/piper/voices/en_US-lessac-medium.onnx",
+};
+function piperSes(metin, dilAdi) {
+  return new Promise((coz) => {
+    const dil = String(dilAdi || "").toLowerCase().startsWith("tur") ? "tr" : "en";
+    const dosya = path.join(os.tmpdir(), "ses-" + Date.now() + "-" + Math.random().toString(36).slice(2) + ".wav");
+    let bitti = false;
+    const bitir = (v) => {
+      if (bitti) return;
+      bitti = true;
+      clearTimeout(zaman);
+      fs.promises.unlink(dosya).catch(() => {});
+      coz(v);
+    };
+    const p = spawn(PIPER_DIR + "/piper", ["--model", SESLER[dil], "--output_file", dosya], {
+      cwd: PIPER_DIR,
+      env: { ...process.env, LD_LIBRARY_PATH: PIPER_DIR },
+    });
+    const zaman = setTimeout(() => { p.kill(); bitir(null); }, 20000);
+    p.on("error", (e) => { console.error("PIPER:", e.message); bitir(null); });
+    p.stdin.on("error", () => {});
+    p.stderr.on("data", () => {});
+    p.on("close", async (kod) => {
+      try {
+        if (kod !== 0) throw new Error("cikis kodu " + kod);
+        const buf = await fs.promises.readFile(dosya);
+        bitir(buf);
+      } catch (e) {
+        console.error("PIPER:", e.message);
+        bitir(null);
+      }
+    });
+    p.stdin.write(String(metin).replace(/\s+/g, " ").trim() + "\n");
+    p.stdin.end();
+  });
+}
+
 const app = express();
 app.use(express.static("public"));
 app.use("/api/talk", express.raw({ type: "*/*", limit: "10mb" }));
@@ -33,6 +77,7 @@ app.post("/api/talk", async (req, res) => {
     const form = new FormData();
     form.append("file", new Blob([req.body], { type: "audio/webm" }), "ses.webm");
     form.append("model", "whisper-large-v3-turbo");
+    form.append("response_format", "verbose_json");
     const stt = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
       method: "POST",
       headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
@@ -65,23 +110,11 @@ app.post("/api/talk", async (req, res) => {
     const reply = chat.choices?.[0]?.message?.content || "";
 
     // 3. Cevabı sese çevir
-    const tts = await fetch("https://api.openai.com/v1/audio/speech", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini-tts",
-        voice: "alloy",
-        input: reply,
-      }),
-    });
-    console.log("TTS:", tts.status, tts.ok ? "tamam" : (await tts.clone().text()).slice(0, 200));
+    const ses = await piperSes(reply, stt.language);
     let audio = "";
-    if (tts.ok) audio = Buffer.from(await tts.arrayBuffer()).toString("base64");
+    if (ses) audio = ses.toString("base64");
 
-    res.json({ user: userText, text: reply, audio });
+    res.json({ user: userText, text: reply, audio, mime: "audio/wav" });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "hata" });
