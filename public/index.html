@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Avatar</title>
+<style>
+  body { margin:0; min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; background:#1b1f27; color:#eee; font-family:sans-serif; text-align:center; padding:16px; box-sizing:border-box; }
+  svg { width:70vw; max-width:300px; }
+  .devre { stroke:#ffcf70; stroke-width:2; fill:none; opacity:.35; transition:opacity .4s; }
+  body.dusunuyor .devre { opacity:1; animation:parla 1s infinite alternate; }
+  @keyframes parla { from { opacity:.4 } to { opacity:1 } }
+  #goz { animation:goz 4s infinite; transform-origin:100px 85px; }
+  @keyframes goz { 0%,94%,100% { transform:scaleY(1) } 97% { transform:scaleY(.1) } }
+  body.dinliyor svg { transform:rotate(-4deg); }
+  svg { transition:transform .4s; }
+  #durum { font-size:15px; opacity:.8; }
+  #yazi { min-height:60px; max-width:320px; font-size:16px; }
+  button { width:84px; height:84px; border-radius:50%; border:none; font-size:34px; background:#ffcf70; cursor:pointer; }
+  button.kayit { background:#ff6b6b; }
+</style>
+</head>
+<body>
+  <div id="durum">Konuşmak için butona dokun</div>
+
+  <svg viewBox="0 0 200 220">
+    <defs>
+      <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ffffff"/>
+        <stop offset="1" stop-color="#d9d3cb"/>
+      </linearGradient>
+    </defs>
+    <path d="M20 30 Q100 5 180 30 Q180 140 100 205 Q20 140 20 30Z" fill="url(#g)"/>
+    <path class="devre" d="M35 50 Q60 60 70 40"/>
+    <path class="devre" d="M165 50 Q140 60 130 40"/>
+    <path class="devre" d="M30 100 Q50 120 45 150"/>
+    <path class="devre" d="M170 100 Q150 120 155 150"/>
+    <path class="devre" d="M75 185 Q100 195 125 185"/>
+    <g id="goz">
+      <ellipse cx="68" cy="85" rx="13" ry="9" fill="#fff" stroke="#999"/>
+      <ellipse cx="132" cy="85" rx="13" ry="9" fill="#fff" stroke="#999"/>
+      <circle cx="68" cy="85" r="6" fill="#c98a2b"/>
+      <circle cx="132" cy="85" r="6" fill="#c98a2b"/>
+    </g>
+    <path d="M100 95 Q96 120 104 125" stroke="#b9b0a6" stroke-width="2" fill="none"/>
+    <ellipse id="agiz" cx="100" cy="155" rx="16" ry="3" fill="#7a3b3b"/>
+  </svg>
+
+  <div id="yazi"></div>
+  <button id="btn">🎤</button>
+
+<script>
+const btn = document.getElementById("btn");
+const durum = document.getElementById("durum");
+const yazi = document.getElementById("yazi");
+const agiz = document.getElementById("agiz");
+
+const player = new Audio();
+let ctx, analyser, veri;
+let rec, parcalar = [], kayitta = false, konusuyor = false;
+
+function sesHazirla() {
+  if (ctx) return;
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const kaynak = ctx.createMediaElementSource(player);
+  analyser = ctx.createAnalyser();
+  analyser.fftSize = 256;
+  kaynak.connect(analyser);
+  analyser.connect(ctx.destination);
+  veri = new Uint8Array(analyser.frequencyBinCount);
+}
+
+function hal(ad, yaziMetni) {
+  document.body.className = ad;
+  durum.textContent = yaziMetni;
+}
+
+// Ağız hareketi: sesin şiddetine göre açılır kapanır
+function agizDongusu() {
+  let ry = 3;
+  if (konusuyor && analyser) {
+    analyser.getByteFrequencyData(veri);
+    let toplam = 0;
+    for (let i = 0; i < veri.length; i++) toplam += veri[i];
+    const ses = toplam / veri.length;
+    ry = 3 + Math.min(ses * 0.5, 22);
+  }
+  agiz.setAttribute("ry", ry);
+  requestAnimationFrame(agizDongusu);
+}
+agizDongusu();
+
+btn.onclick = async () => {
+  sesHazirla();
+  await ctx.resume();
+
+  if (!kayitta) {
+    try {
+      const akis = await navigator.mediaDevices.getUserMedia({ audio: true });
+      rec = new MediaRecorder(akis);
+      parcalar = [];
+      rec.ondataavailable = (e) => parcalar.push(e.data);
+      rec.onstop = () => {
+        akis.getTracks().forEach((t) => t.stop());
+        gonder(new Blob(parcalar, { type: rec.mimeType }));
+      };
+      rec.start();
+      kayitta = true;
+      btn.classList.add("kayit");
+      btn.textContent = "⏹";
+      hal("dinliyor", "Dinliyorum... bitince tekrar dokun");
+    } catch (e) {
+      durum.textContent = "Mikrofon izni verilmedi";
+    }
+  } else {
+    rec.stop();
+    kayitta = false;
+    btn.classList.remove("kayit");
+    btn.textContent = "🎤";
+  }
+};
+
+async function gonder(blob) {
+  hal("dusunuyor", "Düşünüyorum...");
+  btn.disabled = true;
+  try {
+    const r = await fetch("/api/talk", { method: "POST", body: blob });
+    const s = await r.json();
+    if (!s.audio) {
+      hal("", "Seni duyamadım, tekrar dene");
+      btn.disabled = false;
+      return;
+    }
+    yazi.textContent = s.text;
+    player.src = "data:audio/mpeg;base64," + s.audio;
+    player.onplay = () => { konusuyor = true; hal("", "Konuşuyor..."); };
+    player.onended = () => {
+      konusuyor = false;
+      btn.disabled = false;
+      hal("", "Konuşmak için butona dokun");
+    };
+    await player.play();
+  } catch (e) {
+    hal("", "Bir hata oldu, tekrar dene");
+    btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>
