@@ -15,6 +15,7 @@ app.post("/api/talk", async (req, res) => {
       headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
       body: form,
     }).then((r) => r.json());
+    console.log("STT:", JSON.stringify(stt));
     const userText = stt.text || "";
     if (!userText) return res.json({ user: "", text: "", audio: "" });
 
