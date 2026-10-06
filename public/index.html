@@ -141,7 +141,7 @@ async function gonder(blob) {
       speechSynthesis.speak(u);
       return;
     }
-    player.src = "data:audio/mpeg;base64," + s.audio;
+    player.src = "data:" + (s.mime || "audio/mpeg") + ";base64," + s.audio;
     player.onplay = () => { konusuyor = true; hal("", "Konuşuyor..."); };
     player.onended = () => {
       konusuyor = false;
