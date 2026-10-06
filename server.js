@@ -1,5 +1,28 @@
 import express from "express";
 
+let secilenModel = null;
+let secimZamani = 0;
+async function chatModeli() {
+  if (process.env.CHAT_MODEL) return process.env.CHAT_MODEL;
+  if (secilenModel && Date.now() - secimZamani < 3600000) return secilenModel;
+  const liste = await fetch("https://api.groq.com/openai/v1/models", {
+    headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+  }).then((r) => r.json());
+  const adlar = (liste.data || [])
+    .map((m) => m.id)
+    .filter((id) => !/whisper|tts|guard|embed|playai|orpheus/i.test(id));
+  const tercih = ["8b", "20b", "scout", "llama-3.3", "gpt-oss", "qwen"];
+  let bulunan = null;
+  for (const t of tercih) {
+    bulunan = adlar.find((id) => id.includes(t));
+    if (bulunan) break;
+  }
+  secilenModel = bulunan || adlar[0];
+  secimZamani = Date.now();
+  console.log("MODEL:", secilenModel);
+  return secilenModel;
+}
+
 const app = express();
 app.use(express.static("public"));
 app.use("/api/talk", express.raw({ type: "*/*", limit: "10mb" }));
@@ -27,7 +50,7 @@ app.post("/api/talk", async (req, res) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: process.env.CHAT_MODEL || "llama-3.3-70b-versatile",
+        model: await chatModeli(),
         messages: [
           {
             role: "system",
