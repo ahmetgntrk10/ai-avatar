@@ -126,12 +126,20 @@ async function gonder(blob) {
   try {
     const r = await fetch("/api/talk", { method: "POST", body: blob });
     const s = await r.json();
-    if (!s.audio) {
+    if (!s.text) {
       hal("", "Seni duyamadım, tekrar dene");
       btn.disabled = false;
       return;
     }
     yazi.textContent = s.text;
+    if (!s.audio) {
+      const u = new SpeechSynthesisUtterance(s.text);
+      u.lang = /[çğıöşüÇĞİÖŞÜ]/.test(s.text) ? "tr-TR" : "en-US";
+      u.onstart = () => { konusuyor = true; hal("", "Konuşuyor..."); };
+      u.onend = () => { konusuyor = false; btn.disabled = false; hal("", "Konuşmak için butona dokun"); };
+      speechSynthesis.speak(u);
+      return;
+    }
     player.src = "data:audio/mpeg;base64," + s.audio;
     player.onplay = () => { konusuyor = true; hal("", "Konuşuyor..."); };
     player.onended = () => {
