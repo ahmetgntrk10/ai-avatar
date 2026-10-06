@@ -52,8 +52,8 @@ app.post("/api/talk", async (req, res) => {
         input: reply,
       }),
     });
-    if (!tts.ok) throw new Error("Ses üretilemedi");
-    const audio = Buffer.from(await tts.arrayBuffer()).toString("base64");
+    let audio = "";
+    if (tts.ok) audio = Buffer.from(await tts.arrayBuffer()).toString("base64");
 
     res.json({ user: userText, text: reply, audio });
   } catch (e) {
