@@ -77,6 +77,7 @@ app.post("/api/talk", async (req, res) => {
         input: reply,
       }),
     });
+    console.log("TTS:", tts.status, tts.ok ? "tamam" : (await tts.clone().text()).slice(0, 200));
     let audio = "";
     if (tts.ok) audio = Buffer.from(await tts.arrayBuffer()).toString("base64");
 
