@@ -38,6 +38,7 @@ app.post("/api/talk", async (req, res) => {
         ],
       }),
     }).then((r) => r.json());
+    console.log("CHAT:", JSON.stringify(chat).slice(0, 300));
     const reply = chat.choices?.[0]?.message?.content || "";
 
     // 3. Cevabı sese çevir
