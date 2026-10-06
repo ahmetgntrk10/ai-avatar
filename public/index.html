@@ -134,6 +134,7 @@ async function gonder(blob) {
     yazi.textContent = s.text;
     if (!s.audio) {
       const u = new SpeechSynthesisUtterance(s.text);
+      u.rate = 1.2;
       u.lang = /[çğıöşüÇĞİÖŞÜ]/.test(s.text) ? "tr-TR" : "en-US";
       u.onstart = () => { konusuyor = true; hal("", "Konuşuyor..."); };
       u.onend = () => { konusuyor = false; btn.disabled = false; hal("", "Konuşmak için butona dokun"); };
